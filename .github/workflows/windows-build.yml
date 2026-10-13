@@ -1,0 +1,29 @@
+name: Build Sender Pro for Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/sender-pro-windows
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.425'
+      - name: Check and package Windows application
+        shell: pwsh
+        run: ./scripts/package-windows.ps1
+      - name: Upload downloadable Windows bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: SenderPro-Windows-x64
+          path: artifacts/windows-x64/
+          if-no-files-found: error
+          retention-days: 30
