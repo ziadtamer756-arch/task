@@ -41,6 +41,7 @@ public sealed class CampaignRecord
     public string Name { get; set; } = "";
     public string Subject { get; set; } = "";
     public string Body { get; set; } = "";
+    public List<string> Attachments { get; set; } = [];
     public string Mode { get; set; } = "preview";
     public string State { get; set; } = "created";
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

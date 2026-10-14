@@ -20,10 +20,31 @@ jobs:
       - name: Check and package Windows application
         shell: pwsh
         run: ./scripts/package-windows.ps1
+      - name: Exercise Windows screens and capture layouts
+        shell: pwsh
+        run: |
+          $process = Start-Process artifacts/windows-x64/SenderPro.exe -ArgumentList '--ui-smoke-test', "$PWD/artifacts/ui-checks" -PassThru
+          if (-not $process.WaitForExit(120000)) {
+            $process.Kill()
+            throw 'Windows UI checks timed out.'
+          }
+          if ($process.ExitCode -ne 0) {
+            Get-Content artifacts/ui-checks/failure.txt -ErrorAction SilentlyContinue
+            throw 'Windows UI checks failed.'
+          }
+          Get-Content artifacts/ui-checks/ui-checks.txt
       - name: Upload downloadable Windows bundle
         uses: actions/upload-artifact@v4
         with:
           name: SenderPro-Windows-x64
           path: artifacts/windows-x64/
           if-no-files-found: error
+          retention-days: 30
+      - name: Upload screenshots and UI checks
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SenderPro-Windows-UI
+          path: artifacts/ui-checks/
+          if-no-files-found: warn
           retention-days: 30

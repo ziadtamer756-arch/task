@@ -8,7 +8,7 @@ public interface IEmailTransport
     Task SendAsync(string recipient, string subject, string body, CancellationToken token);
 }
 
-public sealed class SmtpTransport(SmtpSettings settings, string password) : IEmailTransport
+public sealed class SmtpTransport(SmtpSettings settings, string password, IReadOnlyList<string>? attachments = null) : IEmailTransport
 {
     public async Task SendAsync(string recipient, string subject, string body, CancellationToken token)
     {
@@ -22,6 +22,7 @@ public sealed class SmtpTransport(SmtpSettings settings, string password) : IEma
         if (!string.IsNullOrWhiteSpace(settings.Username))
             client.Credentials = new NetworkCredential(settings.Username, password);
         using var message = new MailMessage(settings.FromAddress, recipient, subject, body);
+        foreach (var path in attachments ?? []) message.Attachments.Add(new Attachment(path));
         await client.SendMailAsync(message, token);
     }
 }

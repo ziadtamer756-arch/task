@@ -7,6 +7,8 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("CSV round trip preserves Arabic, quotes, commas and multiline fields", CsvRoundTrip),
     ("CSV rejects broken headers, rows, booleans and quotes", CsvRejects),
+    ("Excel round trip preserves Arabic and phone numbers as text", ExcelRoundTrip),
+    ("Excel sparse cells preserve column positions", ExcelSparseCells),
     ("Duplicate import preserves unsubscribe state", ImportDuplicates),
     ("Data persists and interrupted campaigns recover without automatic resend", Persistence),
     ("Corrupt data is rejected and remains intact", CorruptData),
@@ -56,6 +58,41 @@ static Task ImportDuplicates()
     Require(existing.Count == 2 && existing[0].Unsubscribed, "Opt-out lost");
     ContactCsv.Merge(existing, [new() { Email = "two@example.com", Unsubscribed = true }]);
     Require(existing[1].Unsubscribed, "Imported opt-out lost");
+    return Task.CompletedTask;
+}
+
+static Task ExcelRoundTrip()
+{
+    var path = Path.GetTempFileName();
+    try
+    {
+        var c = new Contact { Name = "زياد، تجربة\nسطر ثان", Email = "ziad@example.com", Phone = "+201001234567", Group = "العملاء", Unsubscribed = true };
+        ContactWorkbook.Write(path, [c]);
+        using (var workbook = DocumentFormat.OpenXml.Packaging.SpreadsheetDocument.Open(path, false))
+            Require(!new DocumentFormat.OpenXml.Validation.OpenXmlValidator().Validate(workbook).Any(), "Generated XLSX is not valid OpenXML");
+        var loaded = ContactWorkbook.Read(path).Single();
+        Require(loaded.Name == c.Name && loaded.Email == c.Email && loaded.Phone == c.Phone && loaded.Group == c.Group && loaded.Unsubscribed, "XLSX changed contact values");
+    }
+    finally { File.Delete(path); }
+    return Task.CompletedTask;
+}
+
+static Task ExcelSparseCells()
+{
+    var path = Path.GetTempFileName();
+    try
+    {
+        ContactWorkbook.Write(path, [new() { Name = "Ziad", Email = "one@example.com", Group = "Friends" }]);
+        using (var workbook = DocumentFormat.OpenXml.Packaging.SpreadsheetDocument.Open(path, true))
+        {
+            var worksheet = workbook.WorkbookPart!.WorksheetParts.Single().Worksheet;
+            worksheet.Descendants<DocumentFormat.OpenXml.Spreadsheet.Cell>().Single(c => c.CellReference!.Value == "C2").Remove();
+            worksheet.Save();
+        }
+        var c = ContactWorkbook.Read(path).Single();
+        Require(c.Phone == "" && c.Group == "Friends" && !c.Unsubscribed, "Sparse cells shifted columns");
+    }
+    finally { File.Delete(path); }
     return Task.CompletedTask;
 }
 
@@ -142,6 +179,8 @@ static async Task SmtpIntegration()
     var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start();
     var port = ((IPEndPoint)listener.LocalEndpoint).Port;
     var received = new StringBuilder();
+    var attachment = Path.Combine(Path.GetTempPath(), "senderpro-attachment-" + Guid.NewGuid() + ".txt");
+    File.WriteAllText(attachment, "Attachment payload");
     var server = Task.Run(async () =>
     {
         using var connection = await listener.AcceptTcpClientAsync(timeout.Token);
@@ -167,12 +206,13 @@ static async Task SmtpIntegration()
     try
     {
         // Plaintext is used only for this loopback fixture. Production defaults to STARTTLS.
-        var transport = new SmtpTransport(new() { Host = "127.0.0.1", Port = port, EnableTls = false, FromAddress = "sender@example.com" }, "");
+        var transport = new SmtpTransport(new() { Host = "127.0.0.1", Port = port, EnableTls = false, FromAddress = "sender@example.com" }, "", [attachment]);
         await transport.SendAsync("receiver@example.com", "Integration subject", "Integration body", timeout.Token);
         await server.WaitAsync(timeout.Token);
         Require(received.ToString().Contains("Integration subject") && received.ToString().Contains("Integration body") && received.ToString().Contains("receiver@example.com"), "SMTP payload was not transmitted");
+        Require(received.ToString().Contains(Path.GetFileName(attachment)) && received.ToString().Contains("Content-Disposition: attachment", StringComparison.OrdinalIgnoreCase), "Attachment not included in SMTP payload");
     }
-    finally { listener.Stop(); }
+    finally { listener.Stop(); File.Delete(attachment); }
 }
 
 sealed class RecordingTransport : IEmailTransport

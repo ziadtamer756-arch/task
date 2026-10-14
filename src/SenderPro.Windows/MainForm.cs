@@ -9,24 +9,25 @@ public sealed class MainForm : Form
 {
     private readonly DataStore store;
     private readonly AppData data;
-    private readonly Panel content = new() { Dock = DockStyle.Fill, Padding = new Padding(24), AutoScroll = true };
-    private readonly FlowLayoutPanel navigation = new() { Dock = DockStyle.Right, Width = 220,
-        FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(12), BackColor = Color.FromArgb(24, 34, 54) };
+    private readonly Panel content = new() { Dock = DockStyle.Fill, Padding = new Padding(28), AutoScroll = true };
+    private readonly FlowLayoutPanel navigation = new() { Dock = DockStyle.Right, Width = 230,
+        FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(16), BackColor = Theme.Sidebar, AutoScroll = true };
     private readonly Label status = new() { Dock = DockStyle.Bottom, Height = 35, Padding = new Padding(12, 6, 12, 0) };
+    private readonly List<ModernButton> navigationButtons = [];
     private CancellationTokenSource? cancellation;
     private string smtpPassword = "";
 
     public MainForm(DataStore store, AppData data)
     {
         this.store = store; this.data = data;
-        Text = "Sender Pro — النسخة الجديدة";
-        Size = new Size(1250, 820); MinimumSize = new Size(950, 680);
+        Text = "Sender Pro | إدارة التواصل";
+        Size = new Size(1250, 820); MinimumSize = new Size(900, 640);
         StartPosition = FormStartPosition.CenterScreen;
-        RightToLeft = RightToLeft.Yes; RightToLeftLayout = true;
-        Font = new Font("Segoe UI", 10); BackColor = Color.FromArgb(245, 247, 251);
+        RightToLeft = RightToLeft.Yes; RightToLeftLayout = false;
+        Font = new Font("Segoe UI", 10); BackColor = Theme.Background; ForeColor = Theme.Ink;
         Controls.Add(content); Controls.Add(navigation); Controls.Add(status);
-        var brand = new Label { Text = "SENDER PRO\nإدارة التواصل والحملات", ForeColor = Color.White,
-            Width = 192, Height = 85, Font = new Font("Segoe UI", 13, FontStyle.Bold), TextAlign = ContentAlignment.MiddleCenter };
+        var brand = new Label { Text = "SENDER PRO\nمساحة عملك للتواصل", ForeColor = Color.White,
+            Width = 192, Height = 100, Font = new Font("Segoe UI", 13, FontStyle.Bold), TextAlign = ContentAlignment.MiddleCenter };
         navigation.Controls.Add(brand);
         AddNav("لوحة التحكم", Dashboard);
         AddNav("جهات الاتصال", Contacts);
@@ -34,8 +35,10 @@ public sealed class MainForm : Form
         AddNav("حملة بريد جديدة", Campaign);
         AddNav("سجل الحملات", Reports);
         AddNav("إعدادات SMTP", Settings);
-        AddNav("أقسام البرنامج الأصلي", Catalog);
-        status.Text = "البيانات محفوظة محليًا — " + store.FilePath;
+        AddNav("خريطة الوظائف", Catalog);
+        navigation.Controls.Add(new Label { Text = "WINDOWS EDITION  •  0.2", ForeColor = Theme.Muted, Width = 192, Height = 50, TextAlign = ContentAlignment.MiddleCenter });
+        status.ForeColor = Theme.Muted; status.BackColor = Color.White; status.AutoEllipsis = true;
+        status.Text = "جاهز  •  حفظ محلي تلقائي  •  كلمات المرور لا تُحفظ على القرص";
         FormClosing += (_, e) =>
         {
             if (cancellation is not null)
@@ -50,35 +53,71 @@ public sealed class MainForm : Form
 
     private void AddNav(string text, Action action)
     {
-        var button = Button(text, (_, _) => Guard(action));
-        button.Width = 192; button.Height = 48; button.BackColor = Color.FromArgb(38, 52, 78);
-        button.ForeColor = Color.White; navigation.Controls.Add(button);
+        var button = (ModernButton)Button(text, (_, _) => { });
+        button.Width = 192; button.Height = 48; button.AutoSize = false;
+        button.BackColor = Theme.Sidebar; button.ForeColor = Color.FromArgb(196, 208, 225);
+        button.Margin = new Padding(0, 0, 0, 6);
+        button.Click += (_, _) => Guard(() =>
+        {
+            foreach (var item in navigationButtons) { item.Selected = item == button; item.Invalidate(); }
+            action();
+        });
+        navigationButtons.Add(button); navigation.Controls.Add(button);
     }
 
     private static Button Button(string text, EventHandler action)
     {
-        var button = new Button { Text = text, AutoSize = true, MinimumSize = new Size(125, 38),
-            Padding = new Padding(8), FlatStyle = FlatStyle.Flat, BackColor = Color.White, Margin = new Padding(4) };
+        var button = new ModernButton { Text = text, AutoSize = false, Width = Math.Max(125, TextRenderer.MeasureText(text, SystemFonts.MessageBoxFont).Width + 38),
+            MinimumSize = new Size(100, 42), Margin = new Padding(4) };
+        if (text.Contains("إنشاء") || text.Contains("إرسال عبر") || text.StartsWith("حفظ"))
+        { button.BackColor = Theme.Accent; button.ForeColor = Color.White; }
         button.Click += action; return button;
     }
 
     private FlowLayoutPanel Page(string title, string description)
     {
-        content.Controls.Clear();
-        var page = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true,
-            FlowDirection = FlowDirection.TopDown, WrapContents = false, RightToLeft = RightToLeft.Yes };
-        page.Controls.Add(new Label { Text = title, AutoSize = true, Font = new Font(Font.FontFamily, 22, FontStyle.Bold), Margin = new Padding(0, 0, 0, 12) });
-        page.Controls.Add(new Label { Text = description, AutoSize = true, MaximumSize = new Size(820, 0), Margin = new Padding(0, 0, 0, 16) });
-        content.Controls.Add(page); return page;
+        content.SuspendLayout();
+        while (content.Controls.Count > 0) { var old = content.Controls[0]; content.Controls.Remove(old); old.Dispose(); }
+        var page = new ResponsivePage();
+        page.Controls.Add(new Label { Text = "مساحة العمل  /  " + title, AutoSize = true, ForeColor = Theme.Muted, Margin = new Padding(0, 0, 0, 10) });
+        page.Controls.Add(new Label { Text = title, AutoSize = true, Font = new Font(Font.FontFamily, 24, FontStyle.Bold), ForeColor = Theme.Ink, Margin = new Padding(0, 0, 0, 10) });
+        page.Controls.Add(new Label { Text = description, AutoSize = true, ForeColor = Theme.Muted, Margin = new Padding(0, 0, 0, 24) });
+        content.Controls.Add(page); content.ResumeLayout(true); page.Fit(); return page;
     }
 
     private static FlowLayoutPanel Toolbar() => new() { AutoSize = true, WrapContents = true,
-        FlowDirection = FlowDirection.RightToLeft, MaximumSize = new Size(850, 0) };
+        FlowDirection = FlowDirection.RightToLeft, Margin = new Padding(0, 8, 0, 12) };
 
-    private static DataGridView Grid() => new() { Width = 850, Height = 440, AutoGenerateColumns = false,
-        AllowUserToAddRows = false, AllowUserToDeleteRows = false, RowHeadersVisible = false,
-        AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, BackgroundColor = Color.White,
-        SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false };
+    private static DataGridView Grid()
+    {
+        var grid = new DataGridView { Width = 850, Height = 400, AutoGenerateColumns = false,
+            AllowUserToAddRows = false, AllowUserToDeleteRows = false, RowHeadersVisible = false,
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, BackgroundColor = Color.White,
+            BorderStyle = BorderStyle.None, CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
+            ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None, EnableHeadersVisualStyles = false,
+            ColumnHeadersHeight = 44, ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
+            SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false, GridColor = Theme.Line,
+            Margin = new Padding(0, 0, 0, 16) };
+        grid.ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle { BackColor = Color.FromArgb(233, 239, 247), ForeColor = Theme.Ink,
+            Font = new Font("Segoe UI", 10, FontStyle.Bold), Padding = new Padding(8) };
+        grid.DefaultCellStyle = new DataGridViewCellStyle { BackColor = Color.White, ForeColor = Theme.Ink,
+            SelectionBackColor = Color.FromArgb(219, 243, 239), SelectionForeColor = Theme.Ink, Padding = new Padding(6) };
+        grid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(248, 250, 253);
+        grid.RowTemplate.Height = 40;
+        grid.CellFormatting += (_, e) =>
+        {
+            if (grid.Columns[e.ColumnIndex].DataPropertyName is "Status" or "State" or "Mode" && e.Value is string code)
+            { e.Value = FriendlyState(code); e.FormattingApplied = true; }
+        };
+        return grid;
+    }
+
+    private static string FriendlyState(string value) => value switch
+    {
+        "accepted" => "قبله الخادم", "failed" => "فشل", "skipped" => "مستبعد", "preview" => "معاينة",
+        "created" => "جاهزة", "running" => "قيد التنفيذ", "completed" => "مكتملة", "cancelled" => "متوقفة",
+        "interrupted" => "انقطع التنفيذ", "smtp" => "بريد SMTP", _ => value
+    };
 
     private static void Column(DataGridView grid, string property, string title, bool check = false)
     {
@@ -95,20 +134,43 @@ public sealed class MainForm : Form
 
     private void Dashboard()
     {
-        var page = Page("لوحة التحكم", "نسخة Windows جديدة. الأقسام المنفذة حاليًا: جهات الاتصال، القوالب، حملات البريد، التقارير وإعدادات SMTP.");
-        foreach (var text in new[] { $"جهات الاتصال: {data.Contacts.Count}",
-            $"القوالب: {data.Templates.Count}", $"الحملات: {data.Campaigns.Count}",
-            $"رسائل قبلها خادم SMTP: {data.Campaigns.Sum(c => c.Results.Count(r => r.Status == "accepted"))}" })
-            page.Controls.Add(new Label { Text = text, AutoSize = true, Padding = new Padding(14),
-                BackColor = Color.White, Margin = new Padding(0, 0, 0, 10), Font = new Font(Font.FontFamily, 14) });
-        page.Controls.Add(Button("إنشاء حملة بريد", (_, _) => Campaign()));
-        page.Controls.Add(new Label { Text = "تكاملات المنصات الاجتماعية وتصميم الشاشات المطابق للأصل لم تُنفذ بعد. راجع حصر الأقسام.",
-            AutoSize = true, MaximumSize = new Size(800, 0), Margin = new Padding(0, 20, 0, 0) });
+        navigationButtons[0].Selected = true; navigationButtons[0].Invalidate();
+        var page = Page("نظرة عامة", "جهات اتصالك، رسائلك ونتائج حملاتك في مساحة عمل واحدة.");
+        var cards = new TableLayoutPanel { Height = 230, Width = 850, ColumnCount = 2, RowCount = 2, Margin = new Padding(0, 0, 0, 20) };
+        cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50)); cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        cards.RowStyles.Add(new RowStyle(SizeType.Percent, 50)); cards.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        var stats = new[] { ("جهات الاتصال", data.Contacts.Count.ToString(), "أشخاص ومجموعات"),
+            ("قوالب الرسائل", data.Templates.Count.ToString(), "محتوى قابل لإعادة الاستخدام"),
+            ("الحملات", data.Campaigns.Count.ToString(), "سجل محفوظ محليًا"),
+            ("رسائل قبلها الخادم", data.Campaigns.Sum(c => c.Results.Count(r => r.Status == "accepted")).ToString(), "قبول SMTP لا يؤكد وصول الرسالة") };
+        for (var i = 0; i < stats.Length; i++)
+        {
+            var card = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(18), Margin = new Padding(5) };
+            card.Controls.Add(new Label { Text = stats[i].Item3, Dock = DockStyle.Bottom, Height = 22, ForeColor = Theme.Muted });
+            card.Controls.Add(new Label { Text = stats[i].Item2, Dock = DockStyle.Fill, Font = new Font(Font.FontFamily, 26, FontStyle.Bold), ForeColor = Theme.Accent });
+            card.Controls.Add(new Label { Text = stats[i].Item1, Dock = DockStyle.Top, Height = 24, ForeColor = Theme.Ink });
+            cards.Controls.Add(card, i % 2, i / 2);
+        }
+        page.Controls.Add(cards);
+        var actions = Toolbar(); actions.Controls.Add(Button("إنشاء حملة جديدة", (_, _) => Campaign()));
+        actions.Controls.Add(Button("إدارة جهات الاتصال", (_, _) => Contacts())); page.Controls.Add(actions);
+        page.Controls.Add(new Label { Text = "آخر الحملات", AutoSize = true, Font = new Font(Font.FontFamily, 14, FontStyle.Bold), Margin = new Padding(0, 10, 0, 12) });
+        if (data.Campaigns.Count == 0)
+        {
+            page.Controls.Add(new Label { Text = "لم تبدأ أي حملة بعد. أضف جهات الاتصال ثم جرّب معاينة رسالتك قبل الإرسال.",
+                AutoSize = true, BackColor = Color.White, Padding = new Padding(24), ForeColor = Theme.Muted });
+        }
+        else
+        {
+            var recent = Grid(); recent.Height = 220; recent.ReadOnly = true;
+            Column(recent, "Name", "الحملة"); Column(recent, "State", "الحالة"); Column(recent, "CreatedAt", "التاريخ");
+            recent.DataSource = data.Campaigns.OrderByDescending(c => c.CreatedAt).Take(5).ToList(); page.Controls.Add(recent);
+        }
     }
 
     private void Contacts()
     {
-        var page = Page("جهات الاتصال", "استورد CSV بالأعمدة name,email,phone,group,unsubscribed. القيم المقبولة لإلغاء الاشتراك: true/false أو 1/0. يمكن تعديل الخلايا ثم حفظها.");
+        var page = Page("جهات الاتصال", "استورد قائمة CSV أو Excel، صنّفها إلى مجموعات وعدّل بياناتها مباشرة. الحفظ تلقائي بعد تعديل الخلايا.");
         var grid = Grid();
         Column(grid, "Name", "الاسم"); Column(grid, "Email", "البريد"); Column(grid, "Phone", "الهاتف");
         Column(grid, "Group", "المجموعة"); Column(grid, "Unsubscribed", "إلغاء الاشتراك", true);
@@ -126,22 +188,29 @@ public sealed class MainForm : Form
             using var dialog = new Editor("جهة اتصال جديدة", ("الاسم", ""), ("البريد", ""), ("الهاتف", ""), ("المجموعة", ""));
             if (dialog.ShowDialog(this) != DialogResult.OK) return;
             if (string.IsNullOrWhiteSpace(dialog.Value(0))) throw new InvalidDataException("أدخل اسم جهة الاتصال.");
-            data.Contacts.Add(new Contact { Name = dialog.Value(0), Email = dialog.Value(1), Phone = dialog.Value(2), Group = dialog.Value(3) });
+            var contact = new Contact { Name = dialog.Value(0), Email = dialog.Value(1).Trim(), Phone = dialog.Value(2).Trim(), Group = dialog.Value(3) };
+            if (ContactCsv.Merge(data.Contacts, [contact]) == 0) MessageBox.Show("جهة الاتصال موجودة بالفعل؛ لم تُضف نسخة مكررة.");
             Save(); Bind();
         })));
         bar.Controls.Add(Button("حذف المحدد", (_, _) => Guard(() =>
         {
             if (grid.CurrentRow?.DataBoundItem is Contact c) { data.Contacts.Remove(c); Save(); Bind(); }
         })));
-        bar.Controls.Add(Button("استيراد CSV", (_, _) => Guard(() =>
+        bar.Controls.Add(Button("استيراد قائمة", (_, _) => Guard(() =>
         {
-            using var file = new OpenFileDialog { Filter = "CSV files|*.csv" };
+            using var file = new OpenFileDialog { Filter = "قوائم جهات الاتصال|*.csv;*.xlsx|CSV|*.csv|Excel|*.xlsx" };
             if (file.ShowDialog(this) != DialogResult.OK) return;
-            var imported = ContactCsv.Read(File.ReadAllText(file.FileName, Encoding.UTF8));
+            var imported = Path.GetExtension(file.FileName).Equals(".xlsx", StringComparison.OrdinalIgnoreCase)
+                ? ContactWorkbook.Read(file.FileName) : ContactCsv.Read(File.ReadAllText(file.FileName, Encoding.UTF8));
             var count = ContactCsv.Merge(data.Contacts, imported); Save(); Bind();
             MessageBox.Show($"أُضيفت {count} جهة اتصال. تم دمج المكرر والحفاظ على إلغاء الاشتراك.");
         })));
         bar.Controls.Add(Button("تصدير CSV", (_, _) => Guard(() => { Commit(); Export(ContactCsv.Write(data.Contacts), "contacts.csv"); })));
+        bar.Controls.Add(Button("تصدير Excel", (_, _) => Guard(() =>
+        {
+            Commit(); using var file = new SaveFileDialog { Filter = "Excel|*.xlsx", FileName = "contacts.xlsx" };
+            if (file.ShowDialog(this) == DialogResult.OK) ContactWorkbook.Write(file.FileName, data.Contacts);
+        })));
         bar.Controls.Add(Button("حفظ", (_, _) => Guard(Commit)));
         page.Controls.Add(bar); page.Controls.Add(grid); Bind();
     }
@@ -183,7 +252,27 @@ public sealed class MainForm : Form
         var body = Field(page, "نص الرسالة", "مرحبًا {name}،\r\n"); body.Multiline = true; body.Height = 130; body.ScrollBars = ScrollBars.Vertical;
         template.SelectedIndexChanged += (_, _) => { if (template.SelectedItem is MessageTemplate t) { subject.Text = t.Subject; body.Text = t.Body; } };
         if (template.Items.Count > 0) template.SelectedIndex = 0;
-        var progress = new Label { AutoSize = true, Text = "جاهز" };
+        var attachments = new List<string>();
+        var attachmentInfo = new Label { Text = "لا توجد مرفقات", AutoSize = true, ForeColor = Theme.Muted };
+        var attachmentBar = Toolbar();
+        attachmentBar.Controls.Add(Button("إضافة مرفقات", (_, _) => Guard(() =>
+        {
+            using var file = new OpenFileDialog { Multiselect = true, Title = "مرفقات الحملة" };
+            if (file.ShowDialog(this) != DialogResult.OK) return;
+            foreach (var path in file.FileNames) if (!attachments.Contains(path)) attachments.Add(path);
+            attachmentInfo.Text = "المرفقات: " + string.Join("، ", attachments.Select(Path.GetFileName));
+        })));
+        attachmentBar.Controls.Add(Button("إزالة المرفقات", (_, _) => { attachments.Clear(); attachmentInfo.Text = "لا توجد مرفقات"; }));
+        page.Controls.Add(attachmentBar); page.Controls.Add(attachmentInfo);
+        var sample = Field(page, "معاينة الرسالة لأول جهة اتصال في المجموعة", "");
+        sample.Multiline = true; sample.ReadOnly = true; sample.Height = 100; sample.ScrollBars = ScrollBars.Vertical;
+        void UpdateSample()
+        {
+            var c = data.Contacts.FirstOrDefault(c => !c.Unsubscribed && (group.SelectedIndex == 0 || c.Group == (string?)group.SelectedItem));
+            sample.Text = c is null ? "أضف جهة اتصال للمجموعة حتى تظهر معاينة الرسالة." : TemplateRenderer.Render(subject.Text, c) + "\r\n\r\n" + TemplateRenderer.Render(body.Text, c);
+        }
+        group.SelectedIndexChanged += (_, _) => UpdateSample(); subject.TextChanged += (_, _) => UpdateSample(); body.TextChanged += (_, _) => UpdateSample(); UpdateSample();
+        var progress = new Label { AutoSize = true, Text = "جاهز", ForeColor = Theme.Accent };
         var results = Grid(); results.Height = 230; results.ReadOnly = true;
         Column(results, "Recipient", "المستلم"); Column(results, "Status", "الحالة"); Column(results, "Detail", "التفاصيل");
         var displayed = new BindingList<DeliveryResult>(); results.DataSource = displayed;
@@ -210,28 +299,29 @@ public sealed class MainForm : Form
                 if (!previewOnly)
                 {
                     ValidateSmtp();
+                    if (attachments.Any(path => !File.Exists(path))) throw new InvalidDataException("أحد المرفقات لم يعد موجودًا. اختر الملفات مجددًا.");
                     if (MessageBox.Show($"إرسال الحملة عبر SMTP إلى المجموعة المختارة ({selected.Count} سجلًا قبل التصفية)؟",
                         "إرسال الحملة", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
                 }
                 record = new CampaignRecord { Name = name.Text, Subject = subject.Text, Body = body.Text,
-                    Mode = previewOnly ? "preview" : "smtp" };
+                    Mode = previewOnly ? "preview" : "smtp", Attachments = attachments.ToList() };
                 data.Campaigns.Add(record); Save(); displayed.Clear();
                 cancellation = new CancellationTokenSource();
                 preview.Enabled = send.Enabled = navigation.Enabled = name.Enabled = group.Enabled = template.Enabled = subject.Enabled = body.Enabled = false;
-                stop.Enabled = true;
-                var runner = new CampaignRunner(new SmtpTransport(data.Smtp, smtpPassword));
+                stop.Enabled = true; attachmentBar.Enabled = false;
+                var runner = new CampaignRunner(new SmtpTransport(data.Smtp, smtpPassword, record.Attachments));
                 await runner.RunAsync(record, selected, previewOnly, data.Smtp.DelayMilliseconds, r =>
                 {
                     displayed.Add(r); Save(); progress.Text = $"تمت معالجة {record.Results.Count} من {selected.Count}";
                 }, cancellation.Token);
-                progress.Text = $"حالة الحملة: {record.State} — تمت معالجة {record.Results.Count} سجلًا";
+                progress.Text = $"حالة الحملة: {FriendlyState(record.State)} — تمت معالجة {record.Results.Count} سجلًا";
             }
             catch (Exception ex) { if (record is not null) record.State = "failed"; MessageBox.Show(ex.Message, "تعذر تشغيل الحملة"); }
             finally
             {
                 cancellation?.Dispose(); cancellation = null;
                 preview.Enabled = send.Enabled = navigation.Enabled = name.Enabled = group.Enabled = template.Enabled = subject.Enabled = body.Enabled = true;
-                stop.Enabled = false; Guard(Save);
+                stop.Enabled = false; attachmentBar.Enabled = true; Guard(Save);
             }
         }
     }
@@ -241,7 +331,7 @@ public sealed class MainForm : Form
         var page = Page("سجل الحملات", "accepted يعني أن خادم SMTP قبل الرسالة؛ لا يؤكد وصولها. preview يعني معاينة دون إرسال. skipped يعني استبعاد المستلم. failed يعني فشل العملية.");
         var list = new ListBox { Width = 850, Height = 170 };
         var records = data.Campaigns.OrderByDescending(c => c.CreatedAt).ToList();
-        list.Items.AddRange(records.Select(c => (object)$"{c.CreatedAt.ToLocalTime():g} | {c.Name} | {c.Mode} | {c.State}").ToArray());
+        list.Items.AddRange(records.Select(c => (object)$"{c.CreatedAt.ToLocalTime():g} | {c.Name} | {FriendlyState(c.Mode)} | {FriendlyState(c.State)}").ToArray());
         var grid = Grid(); grid.Height = 320; grid.ReadOnly = true;
         Column(grid, "Recipient", "المستلم"); Column(grid, "Status", "الحالة"); Column(grid, "Detail", "التفاصيل"); Column(grid, "At", "التوقيت");
         list.SelectedIndexChanged += (_, _) => grid.DataSource = list.SelectedIndex < 0 ? null : records[list.SelectedIndex].Results;
@@ -273,7 +363,7 @@ public sealed class MainForm : Form
             if (!int.TryParse(delay.Text, out var d) || d < 0 || d > 3600000) throw new InvalidDataException("التأخير من 0 إلى 3600000 مللي ثانية.");
             var next = new SmtpSettings { Host = host.Text.Trim(), Port = p, FromAddress = from.Text.Trim(), Username = user.Text.Trim(), EnableTls = tls.Checked, DelayMilliseconds = d };
             if (string.IsNullOrWhiteSpace(next.Host) || !CampaignRunner.IsEmail(next.FromAddress)) throw new InvalidDataException("أدخل اسم الخادم وعنوان المرسل الصحيح.");
-            data.Smtp = next; smtpPassword = password.Text; Save(); status.Text = "تم حفظ إعدادات SMTP. كلمة المرور لم تُحفظ على القرص.";
+            data.Smtp = next; smtpPassword = password.Text; Save(); status.Text = "تم حفظ إعدادات الاتصال  •  كلمة المرور لهذه الجلسة فقط";
         })));
     }
 
@@ -287,25 +377,62 @@ public sealed class MainForm : Form
 
     private void Catalog()
     {
-        var page = Page("حصر أقسام البرنامج الأصلي", "هذه أسماء الملفات المستخرجة من معلومات التصحيح، وليست وظائف منفذة في النسخة الجديدة. العدد لا يشمل ملفات Designer. نحتاج فحص الشاشات والسلوك لتحديد تفاصيل كل قسم.");
+        var page = Page("قنوات التواصل", "البريد متاح الآن. بقية القنوات موضحة بحالتها الفعلية حتى تتضح الوظائف الناقصة.");
         var features = JsonSerializer.Deserialize<List<Feature>>(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "feature-catalog.json"))) ?? [];
-        var search = new TextBox { Width = 500, PlaceholderText = "ابحث عن قسم أو اسم ملف" }; page.Controls.Add(search);
-        var grid = Grid(); grid.ReadOnly = true;
-        Column(grid, "Module", "القسم"); Column(grid, "Source", "اسم الملف المرجعي"); Column(grid, "Status", "حالة التنفيذ");
-        void Bind() => grid.DataSource = features.Where(f => (f.Module + " " + f.Source).Contains(search.Text, StringComparison.OrdinalIgnoreCase)).ToList();
-        search.TextChanged += (_, _) => Bind(); page.Controls.Add(grid); Bind();
+        var channels = new[] { ("البريد الإلكتروني", "Emails", "متاح — SMTP والمرفقات"),
+            ("WhatsApp", "Whatsapp", "التكامل غير منفذ"), ("Facebook", "FacebookTools", "التكامل غير منفذ"),
+            ("Instagram", "InstagramTools", "التكامل غير منفذ"), ("Telegram", "Telegram", "التكامل غير منفذ"),
+            ("X / Twitter", "TwitterTools", "التكامل غير منفذ"), ("LinkedIn", "LinkedinTools", "التكامل غير منفذ"),
+            ("TikTok", "TikTok", "التكامل غير منفذ"), ("YouTube", "YoutubeTools", "التكامل غير منفذ"),
+            ("Pinterest", "Pinterest", "التكامل غير منفذ"), ("VK", "VkTools", "التكامل غير منفذ"),
+            ("SMS", "SMS", "التكامل غير منفذ") };
+        var rows = channels.Select(c => new { Channel = c.Item1, Status = c.Item3,
+            ReferenceTools = features.Count(f => f.Module == c.Item2 || (c.Item2 == "Telegram" && f.Source.Contains("Telegram"))) }).ToList();
+        var grid = Grid(); grid.Height = 540; grid.ReadOnly = true;
+        Column(grid, "Channel", "القناة"); Column(grid, "Status", "التوفر"); Column(grid, "ReferenceTools", "أدوات مرجعية تحتاج مراجعة");
+        grid.DataSource = rows; page.Controls.Add(grid);
+        page.Controls.Add(Button("إعداد اتصال البريد", (_, _) => Settings()));
     }
 
     private static TextBox Field(Control parent, string title, string value)
     {
         parent.Controls.Add(new Label { Text = title, AutoSize = true, Margin = new Padding(0, 8, 0, 3) });
-        var field = new TextBox { Text = value, Width = 650 }; parent.Controls.Add(field); return field;
+        var field = new TextBox { Text = value, Width = 650, BorderStyle = BorderStyle.FixedSingle, BackColor = Color.White, Margin = new Padding(0, 0, 0, 8) }; parent.Controls.Add(field); return field;
     }
 
     private void Export(string text, string name)
     {
         using var file = new SaveFileDialog { Filter = "CSV files|*.csv", FileName = name };
         if (file.ShowDialog(this) == DialogResult.OK) File.WriteAllText(file.FileName, text, new UTF8Encoding(true));
+    }
+
+    internal void RunUiSmoke(string output)
+    {
+        Show();
+        var pages = new (string Name, Action Open)[] { ("dashboard", Dashboard), ("contacts", Contacts),
+            ("templates", Templates), ("campaign", Campaign), ("reports", Reports), ("settings", Settings), ("catalog", Catalog) };
+        var report = new List<string>();
+        foreach (var size in new[] { new Size(900, 640), new Size(1280, 820), new Size(1600, 1000) })
+        {
+            Size = size;
+            foreach (var (name, open) in pages)
+            {
+                open(); Application.DoEvents(); PerformLayout(); Application.DoEvents();
+                if (content.Controls[0] is not ResponsivePage page) throw new InvalidOperationException("Missing page " + name);
+                page.Fit(); page.PerformLayout(); Application.DoEvents();
+                foreach (Control child in page.Controls)
+                {
+                    if (child.Left < -2 || child.Right > page.ClientSize.Width + 2)
+                        throw new InvalidOperationException($"Horizontal clipping on {name} at {size.Width}: {child.GetType().Name} {child.Bounds} within {page.ClientSize}");
+                }
+                using var bitmap = new Bitmap(Width, Height);
+                DrawToBitmap(bitmap, new Rectangle(0, 0, Width, Height));
+                bitmap.Save(Path.Combine(output, $"{name}-{size.Width}.png"));
+                report.Add($"PASS {name} at {size.Width}x{size.Height}");
+            }
+        }
+        File.WriteAllLines(Path.Combine(output, "ui-checks.txt"), report);
+        Close();
     }
 
     private sealed class Feature
@@ -321,9 +448,8 @@ public sealed class MainForm : Form
         public Editor(string title, params (string Label, string Value)[] values)
         {
             Text = title; Size = new Size(740, 580); StartPosition = FormStartPosition.CenterParent;
-            Font = new Font("Segoe UI", 10); RightToLeft = RightToLeft.Yes; RightToLeftLayout = true;
-            var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true,
-                FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(20) };
+            Font = new Font("Segoe UI", 10); RightToLeft = RightToLeft.Yes; RightToLeftLayout = false;
+            var panel = new ResponsivePage { Dock = DockStyle.Fill, AutoSize = false, AutoScroll = true, Padding = new Padding(20) };
             Controls.Add(panel);
             foreach (var (label, value) in values) fields.Add(Field(panel, label, value));
             var save = Button("حفظ", (_, _) => { DialogResult = DialogResult.OK; Close(); });
