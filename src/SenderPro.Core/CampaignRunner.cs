@@ -30,7 +30,8 @@ public sealed class SmtpTransport(SmtpSettings settings, string password, IReadO
 public sealed class CampaignRunner(IEmailTransport transport)
 {
     public async Task RunAsync(CampaignRecord campaign, IEnumerable<Contact> contacts,
-        bool preview, int delayMilliseconds, Action<DeliveryResult> onResult, CancellationToken token)
+        bool preview, int delayMilliseconds, Action<DeliveryResult> onResult, CancellationToken token,
+        Action? onStarted = null, IReadOnlySet<string>? globalBlockedRecipients = null)
     {
         if (campaign.State != "created") throw new InvalidOperationException("أنشئ حملة جديدة بدل إعادة إرسال حملة سابقة.");
         campaign.State = "running";
@@ -41,12 +42,13 @@ public sealed class CampaignRunner(IEmailTransport transport)
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         try
         {
+            onStarted?.Invoke();
             foreach (var c in recipients)
             {
                 token.ThrowIfCancellationRequested();
                 var email = c.Email.Trim();
                 var result = new DeliveryResult { Recipient = email };
-                if (c.Unsubscribed || unsubscribed.Contains(email)) { result.Status = "skipped"; result.Detail = "إلغاء الاشتراك"; }
+                if (c.Unsubscribed || unsubscribed.Contains(email) || (globalBlockedRecipients?.Contains(email) ?? false)) { result.Status = "skipped"; result.Detail = "إلغاء الاشتراك"; }
                 else if (!IsEmail(email)) { result.Status = "skipped"; result.Detail = "عنوان بريد غير صالح"; }
                 else if (!seen.Add(email)) { result.Status = "skipped"; result.Detail = "عنوان مكرر في الحملة"; }
                 else if (preview) { result.Status = "preview"; result.Detail = "معاينة محلية — لم يتم الإرسال"; }

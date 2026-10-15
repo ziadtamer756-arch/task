@@ -63,8 +63,8 @@ public static class ContactWorkbook
                     InlineString = new InlineString(new Text(values[i]) { Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve }) });
             sheetData.Append(row);
         }
-        AddRow(["name", "email", "phone", "group", "unsubscribed"]);
-        foreach (var c in contacts) AddRow([c.Name, c.Email, c.Phone, c.Group, c.Unsubscribed ? "true" : "false"]);
+        AddRow(["name", "email", "phone", "group", "unsubscribed", "telegram_chat_id"]);
+        foreach (var c in contacts) AddRow([c.Name, c.Email, c.Phone, c.Group, c.Unsubscribed ? "true" : "false", c.TelegramChatId]);
         workbook.Workbook.Save(); worksheet.Worksheet.Save();
     }
 

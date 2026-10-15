@@ -12,7 +12,7 @@ public sealed class DataStore(string path)
         if (!File.Exists(path)) return new();
         var data = JsonSerializer.Deserialize<AppData>(File.ReadAllText(path), Options)
             ?? throw new InvalidDataException("ملف البيانات فارغ أو غير صالح.");
-        if (data.Contacts is null || data.Templates is null || data.Campaigns is null || data.Smtp is null)
+        if (data.Contacts is null || data.Templates is null || data.Campaigns is null || data.Smtp is null || data.Messaging is null || data.ContentItems is null)
             throw new InvalidDataException("ملف البيانات لا يحتوي على جميع الأقسام المطلوبة.");
         foreach (var campaign in data.Campaigns.Where(c => c.State == "running"))
             campaign.State = "interrupted";

@@ -5,7 +5,7 @@ using SenderPro.Core;
 
 namespace SenderPro.Windows;
 
-public sealed class MainForm : Form
+public sealed partial class MainForm : Form
 {
     private readonly DataStore store;
     private readonly AppData data;
@@ -32,11 +32,13 @@ public sealed class MainForm : Form
         AddNav("لوحة التحكم", Dashboard);
         AddNav("جهات الاتصال", Contacts);
         AddNav("قوالب الرسائل", Templates);
-        AddNav("حملة بريد جديدة", Campaign);
+        AddNav("مكتبة المحتوى", ContentLibrary);
+        AddNav("حملة جديدة", Campaign);
         AddNav("سجل الحملات", Reports);
-        AddNav("إعدادات SMTP", Settings);
+        AddNav("إعداد البريد", Settings);
+        AddNav("ربط واتساب وتليجرام", MessagingAccounts);
         AddNav("خريطة الوظائف", Catalog);
-        navigation.Controls.Add(new Label { Text = "WINDOWS EDITION  •  0.2", ForeColor = Theme.Muted, Width = 192, Height = 50, TextAlign = ContentAlignment.MiddleCenter });
+        navigation.Controls.Add(new Label { Text = "WINDOWS EDITION  •  0.3", ForeColor = Theme.Muted, Width = 192, Height = 50, TextAlign = ContentAlignment.MiddleCenter });
         status.ForeColor = Theme.Muted; status.BackColor = Color.White; status.AutoEllipsis = true;
         status.Text = "جاهز  •  حفظ محلي تلقائي  •  كلمات المرور لا تُحفظ على القرص";
         FormClosing += (_, e) =>
@@ -78,6 +80,7 @@ public sealed class MainForm : Form
     {
         content.SuspendLayout();
         while (content.Controls.Count > 0) { var old = content.Controls[0]; content.Controls.Remove(old); old.Dispose(); }
+        content.AutoScrollPosition = Point.Empty;
         var page = new ResponsivePage();
         page.Controls.Add(new Label { Text = "مساحة العمل  /  " + title, AutoSize = true, ForeColor = Theme.Muted, Margin = new Padding(0, 0, 0, 10) });
         page.Controls.Add(new Label { Text = title, AutoSize = true, Font = new Font(Font.FontFamily, 24, FontStyle.Bold), ForeColor = Theme.Ink, Margin = new Padding(0, 0, 0, 10) });
@@ -106,7 +109,7 @@ public sealed class MainForm : Form
         grid.RowTemplate.Height = 40;
         grid.CellFormatting += (_, e) =>
         {
-            if (grid.Columns[e.ColumnIndex].DataPropertyName is "Status" or "State" or "Mode" && e.Value is string code)
+            if (grid.Columns[e.ColumnIndex].DataPropertyName is "Status" or "State" or "Mode" or "Channel" && e.Value is string code)
             { e.Value = FriendlyState(code); e.FormattingApplied = true; }
         };
         return grid;
@@ -114,9 +117,9 @@ public sealed class MainForm : Form
 
     private static string FriendlyState(string value) => value switch
     {
-        "accepted" => "قبله الخادم", "failed" => "فشل", "skipped" => "مستبعد", "preview" => "معاينة",
+        "accepted" => "قبله المزود", "held" => "معلق لدى واتساب", "failed" => "فشل", "skipped" => "مستبعد", "preview" => "معاينة",
         "created" => "جاهزة", "running" => "قيد التنفيذ", "completed" => "مكتملة", "cancelled" => "متوقفة",
-        "interrupted" => "انقطع التنفيذ", "smtp" => "بريد SMTP", _ => value
+        "interrupted" => "انقطع التنفيذ", "paused" => "متوقفة — راجع الحساب أو حد المزود", "smtp" => "بريد SMTP", "telegram" => "تليجرام", "whatsapp" => "واتساب", _ => value
     };
 
     private static void Column(DataGridView grid, string property, string title, bool check = false)
@@ -173,10 +176,10 @@ public sealed class MainForm : Form
         var page = Page("جهات الاتصال", "استورد قائمة CSV أو Excel، صنّفها إلى مجموعات وعدّل بياناتها مباشرة. الحفظ تلقائي بعد تعديل الخلايا.");
         var grid = Grid();
         Column(grid, "Name", "الاسم"); Column(grid, "Email", "البريد"); Column(grid, "Phone", "الهاتف");
-        Column(grid, "Group", "المجموعة"); Column(grid, "Unsubscribed", "إلغاء الاشتراك", true);
+        Column(grid, "TelegramChatId", "معرّف تليجرام"); Column(grid, "Group", "المجموعة"); Column(grid, "Unsubscribed", "إلغاء الاشتراك", true);
         var search = new TextBox { Width = 270, PlaceholderText = "ابحث بالاسم أو البريد أو الهاتف" };
         void Bind() => grid.DataSource = new BindingList<Contact>(data.Contacts.Where(c =>
-            (c.Name + " " + c.Email + " " + c.Phone).Contains(search.Text, StringComparison.OrdinalIgnoreCase)).ToList());
+            (c.Name + " " + c.Email + " " + c.Phone + " " + c.TelegramChatId).Contains(search.Text, StringComparison.OrdinalIgnoreCase)).ToList());
         void Commit() { grid.EndEdit(); if (BindingContext?[grid.DataSource!] is CurrencyManager manager) manager.EndCurrentEdit(); Save(); }
         grid.DataError += (_, e) => { e.ThrowException = false; MessageBox.Show("قيمة غير صالحة في الجدول."); };
         grid.CurrentCellDirtyStateChanged += (_, _) => { if (grid.IsCurrentCellDirty) grid.CommitEdit(DataGridViewDataErrorContexts.Commit); };
@@ -185,10 +188,10 @@ public sealed class MainForm : Form
         var bar = Toolbar(); bar.Controls.Add(search);
         bar.Controls.Add(Button("إضافة", (_, _) => Guard(() =>
         {
-            using var dialog = new Editor("جهة اتصال جديدة", ("الاسم", ""), ("البريد", ""), ("الهاتف", ""), ("المجموعة", ""));
+            using var dialog = new Editor("جهة اتصال جديدة", ("الاسم", ""), ("البريد", ""), ("الهاتف الدولي", ""), ("المجموعة", ""), ("معرّف محادثة تليجرام", ""));
             if (dialog.ShowDialog(this) != DialogResult.OK) return;
             if (string.IsNullOrWhiteSpace(dialog.Value(0))) throw new InvalidDataException("أدخل اسم جهة الاتصال.");
-            var contact = new Contact { Name = dialog.Value(0), Email = dialog.Value(1).Trim(), Phone = dialog.Value(2).Trim(), Group = dialog.Value(3) };
+            var contact = new Contact { Name = dialog.Value(0), Email = dialog.Value(1).Trim(), Phone = dialog.Value(2).Trim(), Group = dialog.Value(3), TelegramChatId = dialog.Value(4).Trim() };
             if (ContactCsv.Merge(data.Contacts, [contact]) == 0) MessageBox.Show("جهة الاتصال موجودة بالفعل؛ لم تُضف نسخة مكررة.");
             Save(); Bind();
         })));
@@ -217,7 +220,7 @@ public sealed class MainForm : Form
 
     private void Templates()
     {
-        var page = Page("قوالب الرسائل", "المتغيرات المتاحة: {name}، {email}، {phone}، {group}. تُستبدل ببيانات كل مستلم.");
+        var page = Page("قوالب الرسائل", "المتغيرات المتاحة: {name}، {email}، {phone}، {group}، {telegram_chat_id}. تُستبدل ببيانات كل مستلم.");
         var list = new ListBox { Width = 850, Height = 220, DisplayMember = "Name" };
         void Bind() { list.DataSource = null; list.DataSource = data.Templates.ToList(); }
         void Edit(bool add)
@@ -239,109 +242,22 @@ public sealed class MainForm : Form
         page.Controls.Add(bar); page.Controls.Add(list); Bind();
     }
 
-    private void Campaign()
-    {
-        var page = Page("حملة بريد جديدة", "اختر مجموعة أو جميع جهات الاتصال. المعاينة محلية ولا ترسل رسائل. الإرسال الفعلي يحتاج إعدادات SMTP. يتم استبعاد العناوين المكررة وغير الصالحة وجهات الاتصال الملغية للاشتراك.");
-        var name = Field(page, "اسم الحملة", "حملة " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
-        var group = new ComboBox { Width = 500, DropDownStyle = ComboBoxStyle.DropDownList };
-        group.Items.Add("كل المجموعات"); group.Items.AddRange(data.Contacts.Select(c => c.Group).Where(g => g.Length > 0).Distinct().Cast<object>().ToArray()); group.SelectedIndex = 0;
-        page.Controls.Add(group);
-        var template = new ComboBox { Width = 500, DropDownStyle = ComboBoxStyle.DropDownList, DisplayMember = "Name" };
-        template.Items.AddRange(data.Templates.Cast<object>().ToArray()); page.Controls.Add(template);
-        var subject = Field(page, "عنوان البريد", "مرحبًا {name}");
-        var body = Field(page, "نص الرسالة", "مرحبًا {name}،\r\n"); body.Multiline = true; body.Height = 130; body.ScrollBars = ScrollBars.Vertical;
-        template.SelectedIndexChanged += (_, _) => { if (template.SelectedItem is MessageTemplate t) { subject.Text = t.Subject; body.Text = t.Body; } };
-        if (template.Items.Count > 0) template.SelectedIndex = 0;
-        var attachments = new List<string>();
-        var attachmentInfo = new Label { Text = "لا توجد مرفقات", AutoSize = true, ForeColor = Theme.Muted };
-        var attachmentBar = Toolbar();
-        attachmentBar.Controls.Add(Button("إضافة مرفقات", (_, _) => Guard(() =>
-        {
-            using var file = new OpenFileDialog { Multiselect = true, Title = "مرفقات الحملة" };
-            if (file.ShowDialog(this) != DialogResult.OK) return;
-            foreach (var path in file.FileNames) if (!attachments.Contains(path)) attachments.Add(path);
-            attachmentInfo.Text = "المرفقات: " + string.Join("، ", attachments.Select(Path.GetFileName));
-        })));
-        attachmentBar.Controls.Add(Button("إزالة المرفقات", (_, _) => { attachments.Clear(); attachmentInfo.Text = "لا توجد مرفقات"; }));
-        page.Controls.Add(attachmentBar); page.Controls.Add(attachmentInfo);
-        var sample = Field(page, "معاينة الرسالة لأول جهة اتصال في المجموعة", "");
-        sample.Multiline = true; sample.ReadOnly = true; sample.Height = 100; sample.ScrollBars = ScrollBars.Vertical;
-        void UpdateSample()
-        {
-            var c = data.Contacts.FirstOrDefault(c => !c.Unsubscribed && (group.SelectedIndex == 0 || c.Group == (string?)group.SelectedItem));
-            sample.Text = c is null ? "أضف جهة اتصال للمجموعة حتى تظهر معاينة الرسالة." : TemplateRenderer.Render(subject.Text, c) + "\r\n\r\n" + TemplateRenderer.Render(body.Text, c);
-        }
-        group.SelectedIndexChanged += (_, _) => UpdateSample(); subject.TextChanged += (_, _) => UpdateSample(); body.TextChanged += (_, _) => UpdateSample(); UpdateSample();
-        var progress = new Label { AutoSize = true, Text = "جاهز", ForeColor = Theme.Accent };
-        var results = Grid(); results.Height = 230; results.ReadOnly = true;
-        Column(results, "Recipient", "المستلم"); Column(results, "Status", "الحالة"); Column(results, "Detail", "التفاصيل");
-        var displayed = new BindingList<DeliveryResult>(); results.DataSource = displayed;
-        var bar = Toolbar();
-        var preview = Button("معاينة الحملة", (_, _) => { });
-        var send = Button("إرسال عبر SMTP", (_, _) => { });
-        var stop = Button("إيقاف", (_, _) => cancellation?.Cancel()); stop.Enabled = false;
-        preview.Click += async (_, _) => await Run(true);
-        send.Click += async (_, _) => await Run(false);
-        bar.Controls.Add(preview); bar.Controls.Add(send); bar.Controls.Add(stop);
-        page.Controls.Add(bar); page.Controls.Add(progress); page.Controls.Add(results);
-
-        async Task Run(bool previewOnly)
-        {
-            if (cancellation is not null) return;
-            CampaignRecord? record = null;
-            try
-            {
-                if (string.IsNullOrWhiteSpace(name.Text) || string.IsNullOrWhiteSpace(subject.Text) || string.IsNullOrWhiteSpace(body.Text))
-                    throw new InvalidDataException("أدخل اسم الحملة والعنوان ونص الرسالة.");
-                var selected = data.Contacts.Where(c => group.SelectedIndex == 0 || c.Group == (string?)group.SelectedItem)
-                    .Select(c => new Contact { Name = c.Name, Email = c.Email, Phone = c.Phone, Group = c.Group, Unsubscribed = c.Unsubscribed }).ToList();
-                if (selected.Count == 0) throw new InvalidDataException("لا توجد جهات اتصال في المجموعة المحددة.");
-                if (!previewOnly)
-                {
-                    ValidateSmtp();
-                    if (attachments.Any(path => !File.Exists(path))) throw new InvalidDataException("أحد المرفقات لم يعد موجودًا. اختر الملفات مجددًا.");
-                    if (MessageBox.Show($"إرسال الحملة عبر SMTP إلى المجموعة المختارة ({selected.Count} سجلًا قبل التصفية)؟",
-                        "إرسال الحملة", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
-                }
-                record = new CampaignRecord { Name = name.Text, Subject = subject.Text, Body = body.Text,
-                    Mode = previewOnly ? "preview" : "smtp", Attachments = attachments.ToList() };
-                data.Campaigns.Add(record); Save(); displayed.Clear();
-                cancellation = new CancellationTokenSource();
-                preview.Enabled = send.Enabled = navigation.Enabled = name.Enabled = group.Enabled = template.Enabled = subject.Enabled = body.Enabled = false;
-                stop.Enabled = true; attachmentBar.Enabled = false;
-                var runner = new CampaignRunner(new SmtpTransport(data.Smtp, smtpPassword, record.Attachments));
-                await runner.RunAsync(record, selected, previewOnly, data.Smtp.DelayMilliseconds, r =>
-                {
-                    displayed.Add(r); Save(); progress.Text = $"تمت معالجة {record.Results.Count} من {selected.Count}";
-                }, cancellation.Token);
-                progress.Text = $"حالة الحملة: {FriendlyState(record.State)} — تمت معالجة {record.Results.Count} سجلًا";
-            }
-            catch (Exception ex) { if (record is not null) record.State = "failed"; MessageBox.Show(ex.Message, "تعذر تشغيل الحملة"); }
-            finally
-            {
-                cancellation?.Dispose(); cancellation = null;
-                preview.Enabled = send.Enabled = navigation.Enabled = name.Enabled = group.Enabled = template.Enabled = subject.Enabled = body.Enabled = true;
-                stop.Enabled = false; attachmentBar.Enabled = true; Guard(Save);
-            }
-        }
-    }
-
     private void Reports()
     {
         var page = Page("سجل الحملات", "accepted يعني أن خادم SMTP قبل الرسالة؛ لا يؤكد وصولها. preview يعني معاينة دون إرسال. skipped يعني استبعاد المستلم. failed يعني فشل العملية.");
         var list = new ListBox { Width = 850, Height = 170 };
         var records = data.Campaigns.OrderByDescending(c => c.CreatedAt).ToList();
-        list.Items.AddRange(records.Select(c => (object)$"{c.CreatedAt.ToLocalTime():g} | {c.Name} | {FriendlyState(c.Mode)} | {FriendlyState(c.State)}").ToArray());
+        list.Items.AddRange(records.Select(c => (object)$"{c.CreatedAt.ToLocalTime():g} | {c.Name} | {FriendlyState(c.Channel)} | {FriendlyState(c.Mode)} | {FriendlyState(c.State)}").ToArray());
         var grid = Grid(); grid.Height = 320; grid.ReadOnly = true;
-        Column(grid, "Recipient", "المستلم"); Column(grid, "Status", "الحالة"); Column(grid, "Detail", "التفاصيل"); Column(grid, "At", "التوقيت");
+        Column(grid, "Recipient", "المستلم"); Column(grid, "Status", "الحالة"); Column(grid, "Detail", "التفاصيل"); Column(grid, "ProviderMessageId", "معرّف المزود"); Column(grid, "At", "التوقيت");
         list.SelectedIndexChanged += (_, _) => grid.DataSource = list.SelectedIndex < 0 ? null : records[list.SelectedIndex].Results;
         page.Controls.Add(list); page.Controls.Add(grid);
         page.Controls.Add(Button("تصدير نتائج الحملة", (_, _) => Guard(() =>
         {
             if (list.SelectedIndex < 0) return;
             static string Q(string s) => "\"" + s.Replace("\"", "\"\"") + "\"";
-            var text = "recipient,status,detail,at\r\n" + string.Join("\r\n", records[list.SelectedIndex].Results.Select(r =>
-                string.Join(",", new[] { r.Recipient, r.Status, r.Detail, r.At.ToString("O") }.Select(Q))));
+            var text = "recipient,status,detail,provider_message_id,at\r\n" + string.Join("\r\n", records[list.SelectedIndex].Results.Select(r =>
+                string.Join(",", new[] { r.Recipient, r.Status, r.Detail, r.ProviderMessageId, r.At.ToString("O") }.Select(Q))));
             Export(text, "campaign-results.csv");
         })));
         if (list.Items.Count > 0) list.SelectedIndex = 0;
@@ -377,11 +293,11 @@ public sealed class MainForm : Form
 
     private void Catalog()
     {
-        var page = Page("قنوات التواصل", "البريد متاح الآن. بقية القنوات موضحة بحالتها الفعلية حتى تتضح الوظائف الناقصة.");
+        var page = Page("قنوات التواصل", "البريد وتليجرام وواتساب مدمجة. الإرسال يتطلب حسابًا وإعدادات صالحة لكل قناة؛ بقية التكاملات موضحة بحالتها.");
         var features = JsonSerializer.Deserialize<List<Feature>>(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "feature-catalog.json"))) ?? [];
         var channels = new[] { ("البريد الإلكتروني", "Emails", "متاح — SMTP والمرفقات"),
-            ("WhatsApp", "Whatsapp", "التكامل غير منفذ"), ("Facebook", "FacebookTools", "التكامل غير منفذ"),
-            ("Instagram", "InstagramTools", "التكامل غير منفذ"), ("Telegram", "Telegram", "التكامل غير منفذ"),
+            ("WhatsApp", "Whatsapp", "Cloud API مدمج — يحتاج حساب Business"), ("Facebook", "FacebookTools", "التكامل غير منفذ"),
+            ("Instagram", "InstagramTools", "التكامل غير منفذ"), ("Telegram", "Telegram", "Bot API مدمج — يحتاج رمز بوت"),
             ("X / Twitter", "TwitterTools", "التكامل غير منفذ"), ("LinkedIn", "LinkedinTools", "التكامل غير منفذ"),
             ("TikTok", "TikTok", "التكامل غير منفذ"), ("YouTube", "YoutubeTools", "التكامل غير منفذ"),
             ("Pinterest", "Pinterest", "التكامل غير منفذ"), ("VK", "VkTools", "التكامل غير منفذ"),
@@ -408,10 +324,34 @@ public sealed class MainForm : Form
 
     internal void RunUiSmoke(string output)
     {
-        Show();
+        uiSmokeRunning = true; Show();
+        void OpenChannel(int index, bool serviceWindow = false)
+        {
+            Campaign(); smokeChannel!.SelectedIndex = index;
+            if (serviceWindow && content.Controls.Find("whatsapp-mode", true).FirstOrDefault() is ComboBox mode) mode.SelectedIndex = 1;
+        }
         var pages = new (string Name, Action Open)[] { ("dashboard", Dashboard), ("contacts", Contacts),
-            ("templates", Templates), ("campaign", Campaign), ("reports", Reports), ("settings", Settings), ("catalog", Catalog) };
+            ("templates", Templates), ("library", ContentLibrary), ("campaign-smtp", () => OpenChannel(0)),
+            ("campaign-telegram", () => OpenChannel(1)), ("campaign-whatsapp-template", () => OpenChannel(2)),
+            ("campaign-whatsapp-text", () => OpenChannel(2, true)), ("reports", Reports),
+            ("settings-smtp", Settings), ("settings-messaging", MessagingAccounts), ("catalog", Catalog) };
         var report = new List<string>();
+        void Capture(string name)
+        {
+            using var bitmap = new Bitmap(Width, Height); DrawToBitmap(bitmap, new Rectangle(0, 0, Width, Height));
+            bitmap.Save(Path.Combine(output, name + ".png"));
+        }
+        void CheckBounds(Control parent, string route)
+        {
+            if (parent is DataGridView or TextBoxBase or ComboBox or ListBox) return;
+            foreach (Control child in parent.Controls)
+            {
+                if (!child.Visible) continue;
+                if (child.Left < -2 || child.Right > parent.ClientSize.Width + 2)
+                    throw new InvalidOperationException($"Horizontal clipping in {route}: {child.GetType().Name} {child.Bounds} within {parent.GetType().Name} {parent.ClientSize}");
+                CheckBounds(child, route);
+            }
+        }
         foreach (var size in new[] { new Size(900, 640), new Size(1280, 820), new Size(1600, 1000) })
         {
             Size = size;
@@ -419,20 +359,29 @@ public sealed class MainForm : Form
             {
                 open(); Application.DoEvents(); PerformLayout(); Application.DoEvents();
                 if (content.Controls[0] is not ResponsivePage page) throw new InvalidOperationException("Missing page " + name);
-                page.Fit(); page.PerformLayout(); Application.DoEvents();
-                foreach (Control child in page.Controls)
+                page.Fit(); page.PerformLayout(); Application.DoEvents(); CheckBounds(page, name);
+                Capture($"{name}-{size.Width}");
+                if (name.StartsWith("campaign-"))
                 {
-                    if (child.Left < -2 || child.Right > page.ClientSize.Width + 2)
-                        throw new InvalidOperationException($"Horizontal clipping on {name} at {size.Width}: {child.GetType().Name} {child.Bounds} within {page.ClientSize}");
+                    smokePreview!().GetAwaiter().GetResult(); Application.DoEvents();
+                    var record = data.Campaigns.Last();
+                    if (record.State != "completed" || record.Results.Count != data.Contacts.Count || record.Results.Any(r => r.Status != "preview"))
+                        throw new InvalidOperationException("Preview did not execute expected local recipients on " + name);
+                    var resultGrid = content.Controls.Find("campaign-results", true).Single();
+                    content.ScrollControlIntoView(resultGrid); Application.DoEvents(); Capture($"{name}-results-{size.Width}");
+                    report.Add($"PASS local preview {name}: {record.Results.Count} recipients; no live transport");
                 }
-                using var bitmap = new Bitmap(Width, Height);
-                DrawToBitmap(bitmap, new Rectangle(0, 0, Width, Height));
-                bitmap.Save(Path.Combine(output, $"{name}-{size.Width}.png"));
                 report.Add($"PASS {name} at {size.Width}x{size.Height}");
             }
+            using var editor = new ContentLibraryEditor(data.ContentItems.First());
+            editor.Width = size.Width == 900 ? 560 : size.Width == 1280 ? 740 : 820;
+            editor.Show(this); Application.DoEvents(); CheckBounds(editor, "content-editor");
+            using var editorBitmap = new Bitmap(editor.Width, editor.Height);
+            editor.DrawToBitmap(editorBitmap, new Rectangle(0, 0, editor.Width, editor.Height));
+            editorBitmap.Save(Path.Combine(output, $"library-editor-{size.Width}.png"));
+            report.Add($"PASS content editor at {editor.Width} width"); editor.Close();
         }
-        File.WriteAllLines(Path.Combine(output, "ui-checks.txt"), report);
-        Close();
+        File.WriteAllLines(Path.Combine(output, "ui-checks.txt"), report); Close();
     }
 
     private sealed class Feature

@@ -10,6 +10,7 @@ public static class ContactCsv
         if (rows.Count == 0) return [];
         string[] required = ["name", "email", "phone", "group", "unsubscribed"];
         var headers = rows[0].Select(h => h.Trim().ToLowerInvariant()).ToArray();
+        if (headers.Distinct().Count() != headers.Length) throw new InvalidDataException("قائمة الأعمدة تحتوي على أسماء مكررة.");
         if (!required.All(headers.Contains))
             throw new InvalidDataException("أعمدة CSV المطلوبة: name,email,phone,group,unsubscribed");
         var contacts = new List<Contact>();
@@ -24,6 +25,7 @@ public static class ContactCsv
                 throw new InvalidDataException("unsubscribed يجب أن يكون true/false أو 1/0.");
             contacts.Add(new Contact { Name = Get("name"), Email = Get("email"),
                 Phone = Get("phone"), Group = Get("group"),
+                TelegramChatId = headers.Contains("telegram_chat_id") ? Get("telegram_chat_id") : "",
                 Unsubscribed = unsubscribed == "1" || unsubscribed.Equals("true", StringComparison.OrdinalIgnoreCase) });
         }
         return contacts;
@@ -36,11 +38,15 @@ public static class ContactCsv
         {
             var match = existing.FirstOrDefault(x =>
                 (!string.IsNullOrWhiteSpace(c.Email) && x.Email.Equals(c.Email, StringComparison.OrdinalIgnoreCase)) ||
-                (!string.IsNullOrWhiteSpace(c.Phone) && x.Phone == c.Phone));
+                (!string.IsNullOrWhiteSpace(c.Phone) && SocialCampaignRunner.RecipientFor(x, ChannelKind.WhatsApp) == SocialCampaignRunner.RecipientFor(c, ChannelKind.WhatsApp)) ||
+                (!string.IsNullOrWhiteSpace(c.TelegramChatId) && x.TelegramChatId.Equals(c.TelegramChatId, StringComparison.OrdinalIgnoreCase)));
             if (match is not null)
             {
                 // Importing an older list must never re-subscribe an opted-out contact.
                 match.Unsubscribed |= c.Unsubscribed;
+                if (string.IsNullOrWhiteSpace(match.TelegramChatId)) match.TelegramChatId = c.TelegramChatId;
+                if (string.IsNullOrWhiteSpace(match.Email)) match.Email = c.Email;
+                if (string.IsNullOrWhiteSpace(match.Phone)) match.Phone = c.Phone;
                 continue;
             }
             existing.Add(c);
@@ -51,10 +57,10 @@ public static class ContactCsv
 
     public static string Write(IEnumerable<Contact> contacts)
     {
-        var result = new StringBuilder("name,email,phone,group,unsubscribed\r\n");
+        var result = new StringBuilder("name,email,phone,group,unsubscribed,telegram_chat_id\r\n");
         foreach (var c in contacts)
             result.AppendLine(string.Join(",", new[] { c.Name, c.Email, c.Phone, c.Group,
-                c.Unsubscribed ? "true" : "false" }.Select(Escape)));
+                c.Unsubscribed ? "true" : "false", c.TelegramChatId }.Select(Escape)));
         return result.ToString();
     }
 

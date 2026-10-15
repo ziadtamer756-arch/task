@@ -4,6 +4,8 @@ This inventory was recovered by static inspection of the uploaded Sender Pro.exe
 
 ## Findings
 
+Important correction from deeper inspection: the uploaded PDB debug GUID does **not** match the EXE CodeView GUID. PDB source paths may describe a different build. See [reference-analysis.md](reference-analysis.md) for evidence and EXE-backed observations.
+
 - Main executable: Windows PE32 GUI, managed .NET assembly.
 - File and product version metadata: 58.23.0.0. This differs from the uploaded archive name V4.59; feature/version correspondence is unverified.
 - Debug symbols reference 351 unique C# source paths excluding Designer.cs files. Those source files were not supplied.
@@ -12,7 +14,7 @@ This inventory was recovered by static inspection of the uploaded Sender Pro.exe
 
 ## Implementation status
 
-Reference discovery only. No replacement application or matching screens have been implemented yet. Platform choice and visual references remain to be established. Each feature needs behavior, input/output, integration requirements and acceptance checks before claiming parity.
+A separate Windows application is now implemented. It includes contacts, CSV/XLSX, reusable content, SMTP, Telegram Bot API and WhatsApp Cloud API adapters. See [windows-implementation.md](windows-implementation.md) for exact scope and validation limits. This filename inventory remains reference evidence, not a claim that all listed features have been implemented or matched.
 
 ## Source-name inventory
 

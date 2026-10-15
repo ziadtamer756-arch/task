@@ -16,8 +16,10 @@ internal static class Program
             {
                 var sample = new AppData
                 {
-                    Contacts = [new() { Name = "زياد", Email = "ziad@example.com", Group = "العملاء" },
-                        new() { Name = "أحمد", Email = "ahmed@example.com", Group = "العملاء" }],
+                    Contacts = [new() { Name = "زياد", Email = "ziad@example.com", Phone = "+201001234567", TelegramChatId = "123456789", Group = "العملاء" },
+                        new() { Name = "أحمد", Email = "ahmed@example.com", Phone = "+201009876543", TelegramChatId = "987654321", Group = "العملاء" }],
+                    Messaging = new() { WhatsAppTemplateName = "test_template", WhatsAppLanguageCode = "ar" },
+                    ContentItems = [new() { Name = "رسالة ترحيب — بيانات اختبار", Text = "مرحبًا {name}، يسعدنا تواصلك معنا.", Tags = "ترحيب، عملاء" }],
                     Campaigns = [new() { Name = "حملة تجريبية — بيانات اختبار", State = "completed", Mode = "preview" }]
                 };
                 using var form = new MainForm(new DataStore(Path.Combine(testFolder, "data.json")), sample);

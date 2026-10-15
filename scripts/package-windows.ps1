@@ -4,9 +4,14 @@ Push-Location $root
 try {
     dotnet run --project tests/SenderPro.Checks/SenderPro.Checks.csproj -c Release
     if ($LASTEXITCODE -ne 0) { throw 'Application checks failed.' }
+    dotnet run --project tests/SenderPro.ChannelChecks/SenderPro.ChannelChecks.csproj -c Release
+    if ($LASTEXITCODE -ne 0) { throw 'Channel checks failed.' }
+    dotnet run --project tests/SenderPro.CampaignChecks/SenderPro.CampaignChecks.csproj -c Release
+    if ($LASTEXITCODE -ne 0) { throw 'Campaign checks failed.' }
     dotnet publish src/SenderPro.Windows/SenderPro.Windows.csproj -c Release -r win-x64 --self-contained true -o artifacts/windows-x64
     if ($LASTEXITCODE -ne 0) { throw 'Windows publish failed.' }
     Copy-Item docs/windows-implementation.md artifacts/windows-x64/README-ar.md
+    Copy-Item docs/messaging-setup.md artifacts/windows-x64/messaging-setup.md
     Compress-Archive -Path artifacts/windows-x64/* -DestinationPath artifacts/SenderPro-Windows-x64.zip -Force
     Write-Host 'Created artifacts/SenderPro-Windows-x64.zip'
 }
