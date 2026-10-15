@@ -61,12 +61,17 @@ public sealed class CampaignRunner(IEmailTransport transport)
                         result.Status = "accepted";
                         result.Detail = "قبله خادم SMTP؛ وصوله إلى صندوق المستلم غير مؤكد";
                     }
-                    catch (OperationCanceledException) { throw; }
+                    catch (OperationCanceledException)
+                    {
+                        result.Status = "unknown"; result.Detail = "أُلغي الطلب أثناء الإرسال؛ تحقق من النتيجة لدى الخادم قبل إعادة المحاولة";
+                        campaign.Results.Add(result); onResult(result); throw;
+                    }
                     catch (Exception ex) when (ex is SmtpException or FormatException or InvalidOperationException)
                     { result.Status = "failed"; result.Detail = ex.Message; }
                 }
                 campaign.Results.Add(result);
                 onResult(result);
+                if (preview && campaign.Results.Count % 64 == 0) await Task.Yield();
                 if (!preview && result.Status is "accepted" or "failed")
                     await Task.Delay(Math.Max(0, delayMilliseconds), token);
             }

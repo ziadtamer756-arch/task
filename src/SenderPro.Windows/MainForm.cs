@@ -117,7 +117,7 @@ public sealed partial class MainForm : Form
 
     private static string FriendlyState(string value) => value switch
     {
-        "accepted" => "قبله المزود", "held" => "معلق لدى واتساب", "failed" => "فشل", "skipped" => "مستبعد", "preview" => "معاينة",
+        "accepted" => "قبله المزود", "held" => "معلق لدى واتساب", "unknown" => "النتيجة غير مؤكدة", "failed" => "فشل", "skipped" => "مستبعد", "preview" => "معاينة",
         "created" => "جاهزة", "running" => "قيد التنفيذ", "completed" => "مكتملة", "cancelled" => "متوقفة",
         "interrupted" => "انقطع التنفيذ", "paused" => "متوقفة — راجع الحساب أو حد المزود", "smtp" => "بريد SMTP", "telegram" => "تليجرام", "whatsapp" => "واتساب", _ => value
     };
@@ -341,6 +341,16 @@ public sealed partial class MainForm : Form
             using var bitmap = new Bitmap(Width, Height); DrawToBitmap(bitmap, new Rectangle(0, 0, Width, Height));
             bitmap.Save(Path.Combine(output, name + ".png"));
         }
+        void FinishUiTask(Task task)
+        {
+            var deadline = Environment.TickCount64 + 30000;
+            while (!task.IsCompleted)
+            {
+                Application.DoEvents();
+                if (Environment.TickCount64 > deadline) throw new TimeoutException("Local preview timed out.");
+            }
+            task.GetAwaiter().GetResult();
+        }
         void CheckBounds(Control parent, string route)
         {
             if (parent is DataGridView or TextBoxBase or ComboBox or ListBox) return;
@@ -363,7 +373,7 @@ public sealed partial class MainForm : Form
                 Capture($"{name}-{size.Width}");
                 if (name.StartsWith("campaign-"))
                 {
-                    smokePreview!().GetAwaiter().GetResult(); Application.DoEvents();
+                    FinishUiTask(smokePreview!()); Application.DoEvents();
                     var record = data.Campaigns.Last();
                     if (record.State != "completed" || record.Results.Count != data.Contacts.Count || record.Results.Any(r => r.Status != "preview"))
                         throw new InvalidOperationException("Preview did not execute expected local recipients on " + name);
@@ -381,6 +391,18 @@ public sealed partial class MainForm : Form
             editorBitmap.Save(Path.Combine(output, $"library-editor-{size.Width}.png"));
             report.Add($"PASS content editor at {editor.Width} width"); editor.Close();
         }
+        var originalContacts = data.Contacts;
+        try
+        {
+            data.Contacts = Enumerable.Range(1, 5000).Select(i => new Contact { Name = "بيانات اختبار " + i, Email = $"sample{i}@example.com" }).ToList();
+            Campaign(); var previewTask = smokePreview!();
+            if (previewTask.IsCompleted) throw new InvalidOperationException("Large preview blocked the UI until completion.");
+            ((Button)content.Controls.Find("campaign-stop", true).Single()).PerformClick(); FinishUiTask(previewTask);
+            if (data.Campaigns.Last().State != "cancelled" || data.Campaigns.Last().Results.Count >= 5000)
+                throw new InvalidOperationException("Large preview cancellation did not stop pending contacts.");
+            report.Add("PASS 5000-recipient preview yields to UI and cancellation stops pending contacts");
+        }
+        finally { data.Contacts = originalContacts; }
         File.WriteAllLines(Path.Combine(output, "ui-checks.txt"), report); Close();
     }
 

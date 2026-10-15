@@ -25,6 +25,9 @@ var checks = new (string Name, Func<Task> Run)[]
     ("A typed recipient rejection is recorded and later recipients continue", TypedFailure),
     ("Authentication and rate limits pause pending recipients without retry", GlobalProviderFailuresPause),
     ("Unexpected network failures cannot expose a Telegram token", UnexpectedFailureRedaction),
+    ("Typed network and invalid-response failures remain unconfirmed", TypedUncertainFailure),
+    ("In-flight cancellation retains the attempted SMTP recipient", SmtpInFlightCancellation),
+    ("In-flight cancellation retains attempted social recipients", SocialInFlightCancellation),
     ("Social cancellation stops pending recipients and prohibits replay", SocialCancellation),
     ("SMTP cancellation stops pending recipients and prohibits replay", SmtpCancellation)
 };
@@ -370,7 +373,62 @@ static async Task UnexpectedFailureRedaction()
         !(observed?.ToString().Contains(secret, StringComparison.Ordinal) ?? false),
         "An unexpected HTTP failure exposed a bot token in persisted or surfaced error details");
     Require(record.State is "failed" or "completed", "Unexpected transport error left the campaign running");
-    Require(observed is not null || record.Results.Single().Status == "failed", "Unexpected error was silently accepted");
+    Require(observed is not null || record.Results.Single().Status is "failed" or "unknown", "Unexpected error was silently accepted");
+}
+
+static async Task TypedUncertainFailure()
+{
+    foreach (var kind in Enum.GetValues<ChannelKind>())
+    foreach (var errorKind in new[] { ChannelErrorKind.Network, ChannelErrorKind.InvalidResponse })
+    {
+        const string safeMessage = "لم يتم تأكيد قبول الرسالة لدى المزود.";
+        var transport = new RecordingSocialTransport(kind)
+        { FailFirst = new ChannelTransportException(errorKind, safeMessage) };
+        var record = CampaignFor(kind); var callbacks = 0;
+        await new SocialCampaignRunner(transport, kind).RunAsync(record, [ContactFor(kind)], false, 0,
+            _ => callbacks++, default);
+        var result = record.Results.Single();
+        Require(result.Status == "unknown" && result.ProviderMessageId == "" && transport.Attempts == 1 &&
+            transport.Sent.Count == 0 && callbacks == 1 && record.State == "completed",
+            $"{kind} {errorKind} was incorrectly reported as a confirmed failure or acceptance");
+        Require(!result.Detail.Contains("http", StringComparison.OrdinalIgnoreCase) &&
+            !result.Detail.Contains("Bearer", StringComparison.OrdinalIgnoreCase),
+            "A typed uncertain result exposed a request URI or authorization header");
+    }
+}
+
+static async Task SmtpInFlightCancellation()
+{
+    using var cancellation = new CancellationTokenSource();
+    var transport = new CancellingEmailTransport(cancellation); var record = new CampaignRecord(); var callbacks = 0;
+    await new CampaignRunner(transport).RunAsync(record,
+        [new() { Email = "one@example.com" }, new() { Email = "two@example.com" }], false, 0,
+        _ => callbacks++, cancellation.Token);
+    var result = record.Results.Single();
+    Require(transport.Attempts == 1 && record.State == "cancelled" && callbacks == 1 &&
+        result.Recipient == "one@example.com" && result.Status == "unknown" && result.ProviderMessageId == "",
+        "An in-flight SMTP cancellation lost its unconfirmed attempt or sent a later recipient");
+    Require(!JsonSerializer.Serialize(record).Contains(CancellingEmailTransport.SensitiveMarker, StringComparison.Ordinal),
+        "SMTP cancellation persisted sensitive exception details");
+}
+
+static async Task SocialInFlightCancellation()
+{
+    foreach (var kind in Enum.GetValues<ChannelKind>())
+    {
+        using var cancellation = new CancellationTokenSource();
+        var transport = new CancellingSocialTransport(cancellation); var record = CampaignFor(kind); var callbacks = 0;
+        var contact = ContactFor(kind);
+        await new SocialCampaignRunner(transport, kind).RunAsync(record,
+            [contact, ContactFor(kind, 1)], false, 0, _ => callbacks++, cancellation.Token);
+        var result = record.Results.Single();
+        Require(transport.Attempts == 1 && record.State == "cancelled" && callbacks == 1 &&
+            result.Recipient == SocialCampaignRunner.RecipientFor(contact, kind) &&
+            result.Status == "unknown" && result.ProviderMessageId == "",
+            $"An in-flight {kind} cancellation lost its unconfirmed attempt or sent a later recipient");
+        Require(!JsonSerializer.Serialize(record).Contains(CancellingSocialTransport.SensitiveMarker, StringComparison.Ordinal),
+            $"{kind} cancellation persisted a credential from the cancelled request URI");
+    }
 }
 
 static async Task GlobalProviderFailuresPause()
@@ -447,6 +505,29 @@ sealed class RecordingEmailTransport : IEmailTransport
     {
         token.ThrowIfCancellationRequested(); OnSend?.Invoke(); Sent.Add((recipient, subject, body)); return Task.CompletedTask;
     }
+}
+
+sealed class CancellingEmailTransport(CancellationTokenSource cancellation) : IEmailTransport
+{
+    public const string SensitiveMarker = "fixture-sensitive-smtp-cancellation";
+    public int Attempts { get; private set; }
+    public Task SendAsync(string recipient, string subject, string body, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested(); Attempts++; cancellation.Cancel();
+        throw new OperationCanceledException("Fixture cancelled request with " + SensitiveMarker, token);
+    }
+}
+
+sealed class CancellingSocialTransport(CancellationTokenSource cancellation) : ISocialTransport
+{
+    public const string SensitiveMarker = "fixture-sensitive-bot-cancellation";
+    public int Attempts { get; private set; }
+    public Task<ChannelReceipt> SendAsync(ChannelMessage message, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested(); Attempts++; cancellation.Cancel();
+        throw new OperationCanceledException("https://api.telegram.org/bot" + SensitiveMarker + "/sendMessage", token);
+    }
+    public Task<string> CheckConnectionAsync(CancellationToken token) => throw new InvalidOperationException("No connection check expected");
 }
 
 sealed class RecordingSocialTransport(ChannelKind kind) : ISocialTransport

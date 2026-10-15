@@ -30,6 +30,10 @@ jobs:
           }
           if ($process.ExitCode -ne 0) {
             Get-Content artifacts/ui-checks/failure.txt -ErrorAction SilentlyContinue
+            if (Test-Path artifacts/ui-checks/failure.txt) {
+              $uiFailure = (Get-Content artifacts/ui-checks/failure.txt -Raw).Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+              Write-Output "::error::$uiFailure"
+            }
             throw 'Windows UI checks failed.'
           }
           Get-Content artifacts/ui-checks/ui-checks.txt

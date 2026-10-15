@@ -147,7 +147,7 @@ public sealed partial class MainForm
         var bar = Toolbar();
         var preview = Button("معاينة الحملة", (_, _) => { });
         var send = Button("إرسال الحملة", (_, _) => { }); send.BackColor = Theme.Accent; send.ForeColor = Color.White;
-        var stop = Button("إيقاف", (_, _) => cancellation?.Cancel()); stop.Enabled = false;
+        var stop = Button("إيقاف", (_, _) => cancellation?.Cancel()); stop.Enabled = false; stop.Name = "campaign-stop";
         preview.Click += async (_, _) => await Run(true); send.Click += async (_, _) => await Run(false);
         smokePreview = () => Run(true);
         bar.Controls.Add(preview); bar.Controls.Add(send); bar.Controls.Add(stop); page.Controls.Add(bar); page.Controls.Add(progress); page.Controls.Add(results);
@@ -166,6 +166,7 @@ public sealed partial class MainForm
         {
             var whatsapp = channel.SelectedIndex == 2;
             var approvedTemplate = whatsapp && waMode.SelectedIndex == 0;
+            library.Visible = applyContent.Visible = !approvedTemplate;
             SetFieldVisible(subject, channel.SelectedIndex == 0); SetFieldVisible(body, !approvedTemplate);
             template.Visible = !approvedTemplate; waMode.Visible = whatsapp;
             SetFieldVisible(waName, approvedTemplate); SetFieldVisible(waLanguage, approvedTemplate); SetFieldVisible(waParameters, approvedTemplate);
@@ -173,8 +174,8 @@ public sealed partial class MainForm
             hint.Text = channel.SelectedIndex switch
             {
                 0 => "مرفقات البريد تُرسل كما هي. القبول من الخادم لا يؤكد التسليم.",
-                1 => "استخدم Telegram chat ID. البوت لا يستطيع بدء محادثة مع مستخدم لم يبدأ التواصل معه.",
-                _ => approvedTemplate ? "اسم القالب ولغته وعدد قيمه يجب أن يطابقوا القالب المعتمد في حساب Business. المعاينة تعرض القيم؛ نص القالب محفوظ لدى واتساب." : "النص الحر متاح فقط داخل نافذة خدمة العميل التي يسمح بها واتساب، عادةً خلال 24 ساعة من رسالة العميل."
+                1 => "استخدم Telegram chat ID. البوت لا يستطيع بدء محادثة مع مستخدم لم يبدأ التواصل معه. تُطبق نصوص المكتبة فقط؛ مرفقاتها متاحة بالبريد.",
+                _ => approvedTemplate ? "اسم القالب ولغته وعدد قيمه يجب أن يطابقوا القالب المعتمد في حساب Business. المعاينة تعرض القيم؛ نص القالب محفوظ لدى واتساب." : "النص الحر متاح داخل نافذة خدمة العميل فقط. تُطبق نصوص المكتبة؛ المرفقات متاحة بالبريد."
             };
             UpdateSample(); ((ResponsivePage)page).Fit();
         }
@@ -216,7 +217,13 @@ public sealed partial class MainForm
                 data.Campaigns.Add(record); Save(); displayed.Clear(); cancellation = new CancellationTokenSource();
                 foreach (var control in controls) control.Enabled = false;
                 preview.Enabled = send.Enabled = navigation.Enabled = false; stop.Enabled = true;
-                void Progress(DeliveryResult result) { displayed.Add(result); Save(); progress.Text = $"تمت معالجة {record.Results.Count} من {selected.Count}"; }
+                void Progress(DeliveryResult result)
+                {
+                    displayed.Add(result);
+                    if (!previewOnly) Save();
+                    if (!previewOnly || record.Results.Count % 64 == 0)
+                        progress.Text = $"تمت معالجة {record.Results.Count} من {selected.Count}";
+                }
                 if (channelId == "smtp")
                 {
                     var blocked = data.Contacts.Where(c => c.Unsubscribed).Select(c => c.Email.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
