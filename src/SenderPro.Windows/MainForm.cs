@@ -145,7 +145,7 @@ public sealed partial class MainForm : Form
         var stats = new[] { ("جهات الاتصال", data.Contacts.Count.ToString(), "أشخاص ومجموعات"),
             ("قوالب الرسائل", data.Templates.Count.ToString(), "محتوى قابل لإعادة الاستخدام"),
             ("الحملات", data.Campaigns.Count.ToString(), "سجل محفوظ محليًا"),
-            ("رسائل قبلها الخادم", data.Campaigns.Sum(c => c.Results.Count(r => r.Status == "accepted")).ToString(), "قبول SMTP لا يؤكد وصول الرسالة") };
+            ("رسائل قبلها المزود", data.Campaigns.Sum(c => c.Results.Count(r => r.Status == "accepted")).ToString(), "القبول لا يؤكد التسليم أو القراءة") };
         for (var i = 0; i < stats.Length; i++)
         {
             var card = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(18), Margin = new Padding(5) };
@@ -244,7 +244,7 @@ public sealed partial class MainForm : Form
 
     private void Reports()
     {
-        var page = Page("سجل الحملات", "accepted يعني أن خادم SMTP قبل الرسالة؛ لا يؤكد وصولها. preview يعني معاينة دون إرسال. skipped يعني استبعاد المستلم. failed يعني فشل العملية.");
+        var page = Page("سجل الحملات", "قبول المزود لا يؤكد التسليم أو القراءة. المعاينة محلية، والمستبعد لم يُرسل إليه. النتيجة غير المؤكدة تحتاج مراجعة لدى المزود قبل إعادة المحاولة، والمعلّق لدى واتساب ينتظر مراجعة الجودة.");
         var list = new ListBox { Width = 850, Height = 170 };
         var records = data.Campaigns.OrderByDescending(c => c.CreatedAt).ToList();
         list.Items.AddRange(records.Select(c => (object)$"{c.CreatedAt.ToLocalTime():g} | {c.Name} | {FriendlyState(c.Channel)} | {FriendlyState(c.Mode)} | {FriendlyState(c.State)}").ToArray());
@@ -305,7 +305,7 @@ public sealed partial class MainForm : Form
         var rows = channels.Select(c => new { Channel = c.Item1, Status = c.Item3,
             ReferenceTools = features.Count(f => f.Module == c.Item2 || (c.Item2 == "Telegram" && f.Source.Contains("Telegram"))) }).ToList();
         var grid = Grid(); grid.Height = 540; grid.ReadOnly = true;
-        Column(grid, "Channel", "القناة"); Column(grid, "Status", "التوفر"); Column(grid, "ReferenceTools", "أدوات مرجعية تحتاج مراجعة");
+        Column(grid, "Channel", "القناة"); Column(grid, "Status", "التوفر");
         grid.DataSource = rows; page.Controls.Add(grid);
         page.Controls.Add(Button("إعداد اتصال البريد", (_, _) => Settings()));
     }
