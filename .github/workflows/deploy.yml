@@ -1,0 +1,23 @@
+name: Production verification and content sync
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+          persist-credentials: false
+      - name: Verify current production and export content
+        run: |
+          mkdir -p portfolio-export
+          curl --fail --silent --show-error --max-time 30 https://ziad-tamer-portfolio.omar-2035.chatgpt.site/ -o portfolio-export/index.html
+          curl --fail --silent --show-error --max-time 30 https://ziad-tamer-portfolio.omar-2035.chatgpt.site/api/content -o portfolio-export/content.json
+          python3 -c "import json; c=json.load(open('portfolio-export/content.json'))['content']; assert c['schemaVersion'] >= 5; assert len(c['podcast']['episodes']) >= 4"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-content-snapshot
+          path: portfolio-export/
